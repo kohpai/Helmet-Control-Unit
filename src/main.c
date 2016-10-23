@@ -155,10 +155,12 @@ int main(void)
                 case DISCONNECTED:
                     ret = scan_start();
 
-                    if (ret != 0)
+                    if (ret != 0) {
                         printf("Cannot start scanning\n");
+                        break;
+                    }
 
-                    /** printf("Start scanning ...\r\n"); */
+                    printf("Start scanning ...\r\n");
 
                     break;
             }
@@ -332,7 +334,7 @@ static void ble_hsus_c_evt_handler(
                 break;
             }
 
-            /** printf("Discovery done\n"); */
+            printf("Discovery done\n");
 
             internal_state = DISCOVERED;
 
@@ -359,7 +361,7 @@ static void ble_hsus_c_evt_handler(
             uint8_t start = 0;
 
             if (char_handle == p_ble_hsus_c->handles.acc_handle) {
-                /** printf("Read ACC\n"); */
+                printf("Read ACC\n");
                 err_code = sd_ble_gattc_read(
                         p_ble_hsus_c->conn_handle, 
                         p_ble_hsus_c->handles.gyro_handle, 
@@ -374,7 +376,7 @@ static void ble_hsus_c_evt_handler(
                 start = 0;
             }
             else if (char_handle == p_ble_hsus_c->handles.gyro_handle) {
-                /** printf("Read GYRO\n"); */
+                printf("Read GYRO\n");
                 err_code = sd_ble_gattc_read(
                         p_ble_hsus_c->conn_handle, 
                         p_ble_hsus_c->handles.mag_handle, 
@@ -389,7 +391,7 @@ static void ble_hsus_c_evt_handler(
                 start = 3;
             }
             else if (char_handle == p_ble_hsus_c->handles.mag_handle) {
-                /** printf("Read MAG\n"); */
+                printf("Read MAG\n");
                 err_code = sd_ble_gattc_read(
                         p_ble_hsus_c->conn_handle, 
                         p_ble_hsus_c->handles.hrm_handle, 
@@ -404,23 +406,23 @@ static void ble_hsus_c_evt_handler(
                 start = 6;
             }
             else if (char_handle == p_ble_hsus_c->handles.hrm_handle) {
-                /** printf("Read HRM\n"); */
+                printf("Read HRM\n");
                 isDone = true;
                 start = 9;
             }
 
-            /** printf("\tData: "); */
+            printf("\tData: ");
 
             for (uint8_t count = 0; count < p_ble_hsus_evt->data_len; count += 2) {
-                /** printf( "%04x", 
-                  *         ((((uint16_t)p_ble_hsus_evt->p_data[count]) << 8) | 
-                  *          p_ble_hsus_evt->p_data[count + 1])); */
+                printf( "%04x", 
+                        ((((uint16_t)p_ble_hsus_evt->p_data[count]) << 8) | 
+                         p_ble_hsus_evt->p_data[count + 1])); 
                 sensor_values[start + (count/2)] = 
                     ((((uint16_t)p_ble_hsus_evt->p_data[count]) << 8) | 
                      p_ble_hsus_evt->p_data[count + 1]);
             }
 
-            /** printf("\n"); */
+            printf("\n");
 
             if (!isDone)
                 break;
@@ -435,7 +437,7 @@ DISCONNECT:
         }
         
         case BLE_HSUS_C_EVT_DISCONNECTED:
-            /** printf("Disconnected\r\n"); */
+            printf("Disconnected\r\n");
 
             internal_state = DISCONNECTED;
 
@@ -478,7 +480,7 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
                     break;
                 }
 
-                /** printf("Confirmed ID code\n"); */
+                printf("Confirmed ID code\n");
 
                 internal_state = FOUND;
                 err_code = sd_ble_gap_connect(
@@ -490,14 +492,14 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
                     printf("Attempt to connect failed\n");
                 else {
                     // scan is automatically stopped by the connect!!!
-                    /** printf("Connecting => " */
-                    /**         "%02x:%02x:%02x:%02x:%02x:%02x\r\n",  */
-                    /**         p_adv_report->peer_addr.addr[0], */
-                    /**         p_adv_report->peer_addr.addr[1], */
-                    /**         p_adv_report->peer_addr.addr[2], */
-                    /**         p_adv_report->peer_addr.addr[3], */
-                    /**         p_adv_report->peer_addr.addr[4],  */
-                    /**         p_adv_report->peer_addr.addr[5]); */
+                    printf("Connecting => "
+                            "%02x:%02x:%02x:%02x:%02x:%02x\r\n", 
+                            p_adv_report->peer_addr.addr[0],
+                            p_adv_report->peer_addr.addr[1],
+                            p_adv_report->peer_addr.addr[2],
+                            p_adv_report->peer_addr.addr[3],
+                            p_adv_report->peer_addr.addr[4], 
+                            p_adv_report->peer_addr.addr[5]);
                 }
             }
 
@@ -505,14 +507,14 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
         }
 
         case BLE_GAP_EVT_CONNECTED:
-            /** printf("Connected => " */
-            /**         "%02x:%02x:%02x:%02x:%02x:%02x\r\n",  */
-            /**         p_adv_report->peer_addr.addr[0], */
-            /**         p_adv_report->peer_addr.addr[1], */
-            /**         p_adv_report->peer_addr.addr[2], */
-            /**         p_adv_report->peer_addr.addr[3], */
-            /**         p_adv_report->peer_addr.addr[4],  */
-            /**         p_adv_report->peer_addr.addr[5]); */
+            printf("Connected => "
+                    "%02x:%02x:%02x:%02x:%02x:%02x\r\n", 
+                    p_adv_report->peer_addr.addr[0],
+                    p_adv_report->peer_addr.addr[1],
+                    p_adv_report->peer_addr.addr[2],
+                    p_adv_report->peer_addr.addr[3],
+                    p_adv_report->peer_addr.addr[4], 
+                    p_adv_report->peer_addr.addr[5]);
 
             internal_state = CONNECTED;
             // start discovery of services. The HSUS Client waits for a discovery result
@@ -522,7 +524,7 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
             if (err_code != NRF_SUCCESS)
                 printf("Cannot start discovery services\n");
             else {
-                /** printf("Start discovery ...\n"); */
+                printf("Start discovery ...\n");
             }
 
             break;
