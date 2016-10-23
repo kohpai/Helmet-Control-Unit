@@ -48,6 +48,15 @@
 #define DEV_CODE            { 0x53, 0x48, 0x41, 0x44, 0x44, 0x52 ,0x00, 0x00 }
 #define TEAM_CODE           0x0059
 
+#define HSU_STATUS          0
+#define HCU_STATUS          1
+#define ACC_STATUS          2
+#define GYRO_STATUS         3
+#define MAG_STATUS          4
+#define HRM_STATUS          5
+
+#define DEBUG 0
+
 enum internal_state_e {
     FOUND,
     CONNECTED,
@@ -55,48 +64,71 @@ enum internal_state_e {
     DISCONNECTED
 };
 
+enum unit_status_e {
+    SYSTEM_CLEAR = 0,
+    SYSTEM_ERROR,
+    UART_ERROR,
+    TIMER_ERROR,
+    DB_DISC_ERROR,
+    BLE_STACK_ERROR,
+    HSUS_ERROR,
+    SCAN_ERROR,
+    SCAN_TIMEOUT_ERROR,
+    CONN_REQ_TIMEOUT_ERROR
+};
+
 static ble_hsus_c_t             m_ble_hsus_c;                   /**< Instance of HSUS service. Must be passed to all NUS_C API calls. */
 static ble_db_discovery_t       m_ble_db_discovery;             /**< Instance of database discovery module. Must be passed to all db_discovert API calls */
-static enum internal_state_e internal_state = DISCONNECTED;
-static volatile bool timer_read_tick = false;
-static uint16_t sensor_values[10] = {0};
+static          enum internal_state_e   internal_state      = DISCONNECTED;
+static volatile bool                    timer_read_tick     = false;
+static          uint16_t                sensor_values[10]   = {0};
+static          enum unit_status_e      unit_status[2]      = {0};
+static          uint8_t                 overview            = (1 << ACC_STATUS) 
+    | (1 << GYRO_STATUS) 
+    | (1 << MAG_STATUS) 
+    | (1 << HRM_STATUS) | 0;
+
 APP_TIMER_DEF(ble_read_timer_id);
 
 /**
  * @brief Connection parameters requested for connection.
  */
 static const ble_gap_conn_params_t m_connection_param =
-  {
-    (uint16_t)MIN_CONNECTION_INTERVAL,  // Minimum connection
-    (uint16_t)MAX_CONNECTION_INTERVAL,  // Maximum connection
-    (uint16_t)SLAVE_LATENCY,            // Slave latency
-    (uint16_t)SUPERVISION_TIMEOUT       // Supervision time-out
-  };
+{
+  (uint16_t)MIN_CONNECTION_INTERVAL,  // Minimum connection
+  (uint16_t)MAX_CONNECTION_INTERVAL,  // Maximum connection
+  (uint16_t)SLAVE_LATENCY,            // Slave latency
+  (uint16_t)SUPERVISION_TIMEOUT       // Supervision time-out
+};
 
 /**
  * @brief Parameters used when scanning.
  */
 static const ble_gap_scan_params_t m_scan_params = 
-  {
-    .active      = SCAN_ACTIVE,
-    .selective   = SCAN_SELECTIVE,
-    .p_whitelist = NULL,
-    .interval    = SCAN_INTERVAL,
-    .window      = SCAN_WINDOW,
-    .timeout     = SCAN_TIMEOUT
-  };
+{
+  .active      = SCAN_ACTIVE,
+  .selective   = SCAN_SELECTIVE,
+  .p_whitelist = NULL,
+  .interval    = SCAN_INTERVAL,
+  .window      = SCAN_WINDOW,
+  .timeout     = SCAN_TIMEOUT
+};
 
 static uint8_t  app_timers_init(void);
-static void     power_manage(void);
+static uint8_t  power_manage(void);
 static uint8_t  uart_init(void);
 static uint8_t  db_discovery_init(void);
 static uint8_t  ble_stack_init(void);
 static uint8_t  hsus_c_init(void);
 static uint8_t  scan_start(void);
+#if DEBUG == 0
+static void sensor_resp(uint16_t *sv, uint8_t start);
+#endif
 
 int main(void)
 {
     uint8_t ret;
+    uint8_t conn_cnt = 0;
 
     LEDS_CONFIGURE(LEDS_MASK);
     LEDS_OFF(LEDS_MASK);
@@ -106,36 +138,58 @@ int main(void)
 
     if (ret != 0) {
         LEDS_ON(BSP_LED_2_MASK);
+        overview &= (~(1 << HCU_STATUS));
+        unit_status[HCU_STATUS] = UART_ERROR;
+
         goto EXIT_PROGRAM;
     }
 
     ret = app_timers_init();
 
     if (ret != 0) {
+#if DEBUG == 1
         printf("Cannot initialize timers\n");
+#endif
+        overview &= (~(1 << HCU_STATUS));
+        unit_status[HCU_STATUS] = TIMER_ERROR;
         goto EXIT_PROGRAM;
     }
 
     ret = db_discovery_init();
 
     if (ret != 0) {
+#if DEBUG == 1
         printf("Cannot initialize DB Discovery module\n");
+#endif
+        overview &= (~(1 << HCU_STATUS));
+        unit_status[HCU_STATUS] = DB_DISC_ERROR;
         goto EXIT_PROGRAM;
     }
 
     ret = ble_stack_init();
 
     if (ret != 0) {
+#if DEBUG == 1
         printf("Cannot initialize BLE stack, Error: %u.\n", ret);
+#endif
+        overview &= (~(1 << HCU_STATUS));
+        unit_status[HCU_STATUS] = BLE_STACK_ERROR;
         goto EXIT_PROGRAM;
     }
 
     ret = hsus_c_init();
 
     if (ret != 0) {
-        printf("Cannot initialize HSU client\n");
+#if DEBUG == 1
+        printf("Cannot initialize HSUS client\n");
+#endif
+        overview &= (~(1 << HCU_STATUS));
+        unit_status[HCU_STATUS] = HSUS_ERROR;
         goto EXIT_PROGRAM;
     }
+
+    overview |= 1 << HCU_STATUS;
+    unit_status[HCU_STATUS] = SYSTEM_CLEAR;
 
     // Start scanning for peripherals and initiate connection
     // with devices that advertise NUS UUID.
@@ -149,18 +203,34 @@ int main(void)
                 case FOUND:
                     break;
                 case CONNECTED:
+#if DEBUG == 1
+                    printf("main connected\n");
+#endif
+                    overview |= 1 << HSU_STATUS;
+                    unit_status[HSU_STATUS] = SYSTEM_CLEAR;
+
+                    if ((++conn_cnt) > 1) {
+                        conn_cnt = 0;
+                        internal_state = DISCONNECTED;
+                    }
+
                     break;
                 case DISCOVERED:
+#if DEBUG == 1
+                    printf("main discovered\n");
+#endif
                     break;
                 case DISCONNECTED:
                     ret = scan_start();
 
                     if (ret != 0) {
-                        printf("Cannot start scanning\n");
-                        break;
+                        overview &= (~(1 << HCU_STATUS));
+                        unit_status[HCU_STATUS] = SCAN_ERROR;
                     }
-
-                    printf("Start scanning ...\r\n");
+                    else {
+                        overview |= 1 << HCU_STATUS;
+                        unit_status[HCU_STATUS] = SYSTEM_CLEAR;
+                    }
 
                     break;
             }
@@ -169,47 +239,146 @@ int main(void)
         if (app_uart_get(&ch) == NRF_SUCCESS) {
             switch (ch) {
                 case 'O':
+#if DEBUG == 1
+                    printf("%02x\n", overview);
+#else
+                    while(app_uart_put(overview) != NRF_SUCCESS);
+#endif
                     break;
                 case 'S':
+#if DEBUG == 1
+                    printf("%02x\n", unit_status[HSU_STATUS]);
+#else
+                    while(app_uart_put(unit_status[HSU_STATUS]) != NRF_SUCCESS);
+#endif
                     break;
                 case 'C':
+#if DEBUG == 1
+                    printf("%02x\n", unit_status[HCU_STATUS]);
+#else
+                    while(app_uart_put(unit_status[HCU_STATUS]) != NRF_SUCCESS);
+#endif
                     break;
                 case 'A':
+#if DEBUG == 1
                     printf( "%04x%04x%04x\n", 
                             sensor_values[0], 
                             sensor_values[1], 
                             sensor_values[2]);
+#else
+                    sensor_resp(sensor_values, 0);
+#endif
                     break;
                 case 'G':
+#if DEBUG == 1
                     printf( "%04x%04x%04x\n", 
                             sensor_values[3], 
                             sensor_values[4], 
                             sensor_values[5]);
+#else
+                    sensor_resp(sensor_values, 3);
+#endif
                     break;
                 case 'M':
+#if DEBUG == 1
                     printf( "%04x%04x%04x\n", 
                             sensor_values[6], 
                             sensor_values[7], 
                             sensor_values[8]);
+#else
+                    sensor_resp(sensor_values, 6);
+#endif
                     break;
                 case 'H':
+#if DEBUG == 1
                     printf( "%04x\n", sensor_values[9]);
+#else
+                    while(app_uart_put((uint8_t)(sensor_values[9] >> 8)) != 
+                            NRF_SUCCESS);
+                    while(app_uart_put((uint8_t)(sensor_values[9])) != 
+                            NRF_SUCCESS);
+#endif
                     break;
                 default:
+#if DEBUG == 1
                     printf("invalid requested data\n");
+#else
+                    printf("A");
+#endif
                     break;
             }
         }
 
-        power_manage();
+        ret = power_manage();
+
+        if (ret != 0) {
+#if DEBUG == 1
+            printf("Cannot go to sleep\n");
+#endif
+        }
     }
 
 EXIT_PROGRAM:
+#if DEBUG == 1
     printf("someone call exit\n");
-    while (true) {  }
+#endif
+    
+    if (unit_status[HCU_STATUS] == UART_ERROR)
+        while (true);
+
+    while (true) {
+        uint8_t ch;
+
+        if (app_uart_get(&ch) == NRF_SUCCESS) {
+            switch (ch) {
+                case 'O':
+#if DEBUG == 1
+                    printf("%02x\n", overview);
+#else
+                    while(app_uart_put(overview) != NRF_SUCCESS);
+#endif
+                    break;
+                case 'C':
+#if DEBUG == 1
+                    printf("%02x\n", unit_status[HCU_STATUS]);
+#else
+                    while(app_uart_put(unit_status[HCU_STATUS]) != NRF_SUCCESS);
+#endif
+                    break;
+                default:
+#if DEBUG == 1
+                    printf("invalid requested data\n");
+#endif
+                    break;
+            }
+        }
+    }
 
     return 0;
 }
+
+#if DEBUG == 0
+static void sensor_resp(uint16_t *sv, uint8_t start)
+{
+    uint8_t cr = (uint8_t)(sv[start] >> 8);
+    while(app_uart_put(cr) != NRF_SUCCESS);
+
+    cr = (uint8_t)(sv[start]);
+    while(app_uart_put(cr) != NRF_SUCCESS);
+
+    cr = (uint8_t)(sv[start + 1] >> 8);
+    while(app_uart_put(cr) != NRF_SUCCESS);
+
+    cr = (uint8_t)(sv[start + 1]);
+    while(app_uart_put(cr) != NRF_SUCCESS);
+    
+    cr = (uint8_t)(sv[start + 2] >> 8);
+    while(app_uart_put(cr) != NRF_SUCCESS);
+
+    cr = (uint8_t)(sv[start + 2]);
+    while(app_uart_put(cr) != NRF_SUCCESS);
+}
+#endif
 
 // Timeout handler for the repeated timer
 static void ble_read_int_handler(void * p_context)
@@ -269,7 +438,9 @@ static uint8_t scan_start(void)
     err_code = sd_ble_gap_scan_start(&m_scan_params);
 
     if (err_code != NRF_SUCCESS) {
+#if DEBUG == 1
         printf("SCAN Error: %lu\n", err_code); // NRF_ERROR_INVALID_STATE Most of the time
+#endif
         return 1;
     }
 
@@ -330,12 +501,16 @@ static void ble_hsus_c_evt_handler(
                     &p_ble_hsus_evt->handles);
 
             if (err_code != NRF_SUCCESS) {
+#if DEBUG == 1
                 printf("Cannot assign characteristic handles\n");
+#endif
+                overview &= (~(1 << HCU_STATUS));
+                unit_status[HCU_STATUS] = SYSTEM_ERROR;
                 break;
             }
-
+#if DEBUG == 1
             printf("Discovery done\n");
-
+#endif
             internal_state = DISCOVERED;
 
             err_code = sd_ble_gattc_read(
@@ -344,76 +519,127 @@ static void ble_hsus_c_evt_handler(
                     0);
 
             if (err_code != NRF_SUCCESS) {
+#if DEBUG == 1
                 printf("Cannot read ACC value\n");
+#endif
+                overview &= (~(1 << HCU_STATUS));
+                unit_status[HCU_STATUS] = SYSTEM_ERROR;
+
                 err_code = sd_ble_gap_disconnect(p_ble_hsus_c->conn_handle, 
                         BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
 
-                if (err_code != NRF_SUCCESS)
+                if (err_code != NRF_SUCCESS) {
+#if DEBUG == 1
                     printf("Cannot start disconnecting\n");
+#endif
+                }
+            }
+            else {
+                overview |= (1 << HCU_STATUS);
+                unit_status[HCU_STATUS] = SYSTEM_CLEAR;
             }
 
             break;
         }
 
         case BLE_HSUS_C_EVT_READ_RSP: {
-            uint16_t char_handle = p_ble_hsus_evt->handles.acc_handle;
-            bool isDone = false;
-            uint8_t start = 0;
+            uint16_t    char_handle     = p_ble_hsus_evt->handles.acc_handle;
+            bool        isDone          = false;
+            uint8_t     start           = 0;
 
             if (char_handle == p_ble_hsus_c->handles.acc_handle) {
+#if DEBUG == 1
                 printf("Read ACC\n");
+#endif
                 err_code = sd_ble_gattc_read(
                         p_ble_hsus_c->conn_handle, 
                         p_ble_hsus_c->handles.gyro_handle, 
                         0);
     
                 if (err_code != NRF_SUCCESS) {
+#if DEBUG == 1
                     printf("Cannot read GYRO value, Error: %lu\n", err_code);
+#endif
+                    overview &= (~(1 << HCU_STATUS));
+                    unit_status[HCU_STATUS] = SYSTEM_ERROR;
                     isDone = true;
+
                     goto DISCONNECT;
+                }
+                else {
+                    overview |= (1 << HCU_STATUS);
+                    unit_status[HCU_STATUS] = SYSTEM_CLEAR;
                 }
 
                 start = 0;
             }
             else if (char_handle == p_ble_hsus_c->handles.gyro_handle) {
+#if DEBUG == 1
                 printf("Read GYRO\n");
+#endif
                 err_code = sd_ble_gattc_read(
                         p_ble_hsus_c->conn_handle, 
                         p_ble_hsus_c->handles.mag_handle, 
                         0);
 
                 if (err_code != NRF_SUCCESS) {
+#if DEBUG == 1
                     printf("Cannot read MAG value\n");
+#endif
+                    overview &= (~(1 << HCU_STATUS));
+                    unit_status[HCU_STATUS] = SYSTEM_ERROR;
                     isDone = true;
+
                     goto DISCONNECT;
+                }
+                else {
+                    overview |= (1 << HCU_STATUS);
+                    unit_status[HCU_STATUS] = SYSTEM_CLEAR;
                 }
 
                 start = 3;
             }
             else if (char_handle == p_ble_hsus_c->handles.mag_handle) {
+#if DEBUG == 1
                 printf("Read MAG\n");
+#endif
                 err_code = sd_ble_gattc_read(
                         p_ble_hsus_c->conn_handle, 
                         p_ble_hsus_c->handles.hrm_handle, 
                         0);
     
                 if (err_code != NRF_SUCCESS) {
+#if DEBUG == 1
                     printf("Cannot read HRM value\n");
+#endif
+                    overview &= (~(1 << HCU_STATUS));
+                    unit_status[HCU_STATUS] = SYSTEM_ERROR;
                     isDone = true;
+
                     goto DISCONNECT;
+                }
+                else {
+                    overview |= (1 << HCU_STATUS);
+                    unit_status[HCU_STATUS] = SYSTEM_CLEAR;
                 }
 
                 start = 6;
             }
             else if (char_handle == p_ble_hsus_c->handles.hrm_handle) {
+#if DEBUG == 1
                 printf("Read HRM\n");
+#endif
+                overview &= (~(1 << HCU_STATUS));
+                unit_status[HCU_STATUS] = SYSTEM_ERROR;
                 isDone = true;
                 start = 9;
             }
-
+#if DEBUG == 1
             printf("\tData: ");
 
-            for (uint8_t count = 0; count < p_ble_hsus_evt->data_len; count += 2) {
+            for (   uint8_t count = 0; 
+                    count < p_ble_hsus_evt->data_len; 
+                    count += 2) {
                 printf( "%04x", 
                         ((((uint16_t)p_ble_hsus_evt->p_data[count]) << 8) | 
                          p_ble_hsus_evt->p_data[count + 1])); 
@@ -423,6 +649,15 @@ static void ble_hsus_c_evt_handler(
             }
 
             printf("\n");
+#else
+            for (   uint8_t count = 0; 
+                    count < p_ble_hsus_evt->data_len; 
+                    count += 2) {
+                sensor_values[start + (count/2)] = 
+                    ((((uint16_t)p_ble_hsus_evt->p_data[count]) << 8) | 
+                     p_ble_hsus_evt->p_data[count + 1]);
+            }
+#endif
 
             if (!isDone)
                 break;
@@ -430,20 +665,28 @@ DISCONNECT:
             err_code = sd_ble_gap_disconnect(p_ble_hsus_c->conn_handle, 
                     BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
     
-            if (err_code != NRF_SUCCESS)
+            if (err_code != NRF_SUCCESS) {
+#if DEBUG == 1
                 printf("Cannot start disconnecting\n");
+#endif
+                overview &= (~(1 << HCU_STATUS));
+                unit_status[HCU_STATUS] = SYSTEM_ERROR;
+            }
+            else {
+                overview |= (1 << HCU_STATUS);
+                unit_status[HCU_STATUS] = SYSTEM_CLEAR;
+            }
 
             break;
         }
         
         case BLE_HSUS_C_EVT_DISCONNECTED:
+#if DEBUG == 1
             printf("Disconnected\r\n");
-
+#endif
             internal_state = DISCONNECTED;
 
             break;
-
-        break;
     }
 }
 
@@ -476,22 +719,29 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
                         break;
 
                 if (count < p_gap_evt->params.adv_report.dlen) {
+#if DEBUG == 1
                     printf("Wrong ID code\n");
+#endif
                     break;
                 }
-
+#if DEBUG == 1
                 printf("Confirmed ID code\n");
-
+#endif
                 internal_state = FOUND;
                 err_code = sd_ble_gap_connect(
                         &p_adv_report->peer_addr, 
                         &m_scan_params, 
                         &m_connection_param);
 
-                if (err_code != NRF_SUCCESS)
+                if (err_code != NRF_SUCCESS) {
+#if DEBUG == 1
                     printf("Attempt to connect failed\n");
+#endif
+                    overview &= (~(1 << HCU_STATUS));
+                    unit_status[HCU_STATUS] = SYSTEM_ERROR;
+                }
                 else {
-                    // scan is automatically stopped by the connect!!!
+#if DEBUG == 1
                     printf("Connecting => "
                             "%02x:%02x:%02x:%02x:%02x:%02x\r\n", 
                             p_adv_report->peer_addr.addr[0],
@@ -500,6 +750,9 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
                             p_adv_report->peer_addr.addr[3],
                             p_adv_report->peer_addr.addr[4], 
                             p_adv_report->peer_addr.addr[5]);
+#endif
+                    overview |= (1 << HCU_STATUS);
+                    unit_status[HCU_STATUS] = SYSTEM_CLEAR;
                 }
             }
 
@@ -507,6 +760,7 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
         }
 
         case BLE_GAP_EVT_CONNECTED:
+#if DEBUG == 1
             printf("Connected => "
                     "%02x:%02x:%02x:%02x:%02x:%02x\r\n", 
                     p_adv_report->peer_addr.addr[0],
@@ -515,26 +769,43 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
                     p_adv_report->peer_addr.addr[3],
                     p_adv_report->peer_addr.addr[4], 
                     p_adv_report->peer_addr.addr[5]);
-
+#endif
             internal_state = CONNECTED;
-            // start discovery of services. The HSUS Client waits for a discovery result
             err_code = ble_db_discovery_start(&m_ble_db_discovery, 
                     p_ble_evt->evt.gap_evt.conn_handle);
 
-            if (err_code != NRF_SUCCESS)
+            if (err_code != NRF_SUCCESS) {
+#if DEBUG == 1
                 printf("Cannot start discovery services\n");
+#endif
+                overview &= (~(1 << HCU_STATUS));
+                unit_status[HCU_STATUS] = SYSTEM_ERROR;
+            }
             else {
+#if DEBUG == 1
                 printf("Start discovery ...\n");
+#endif
+                overview |= (1 << HCU_STATUS);
+                unit_status[HCU_STATUS] = SYSTEM_CLEAR;
             }
 
             break;
 
         case BLE_GAP_EVT_TIMEOUT:
-            if (p_gap_evt->params.timeout.src == BLE_GAP_TIMEOUT_SRC_SCAN)
+            if (p_gap_evt->params.timeout.src == BLE_GAP_TIMEOUT_SRC_SCAN) {
+#if DEBUG == 1
                 printf("Scan timed out.\r\n");
+#endif
+                overview &= (~(1 << HSU_STATUS));
+                unit_status[HSU_STATUS] = SCAN_TIMEOUT_ERROR;
+            }
             else if (p_gap_evt->params.timeout.src == 
                     BLE_GAP_TIMEOUT_SRC_CONN) {
+#if DEBUG == 1
                 printf("Connection Request timed out.\r\n");
+#endif
+                overview &= (~(1 << HSU_STATUS));
+                unit_status[HSU_STATUS] = CONN_REQ_TIMEOUT_ERROR;
             }
             break;
 
@@ -544,8 +815,11 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
                 sd_ble_gap_sec_params_reply(p_ble_evt->evt.gap_evt.conn_handle, 
                         BLE_GAP_SEC_STATUS_PAIRING_NOT_SUPP, NULL, NULL);
 
-            if (err_code != NRF_SUCCESS)
+            if (err_code != NRF_SUCCESS) {
+#if DEBUG == 1
                 printf("Cannot reply the secured request\n");
+#endif
+            }
 
             break;
 
@@ -554,8 +828,11 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
             err_code = sd_ble_gap_conn_param_update(p_gap_evt->conn_handle, 
                     &p_gap_evt->params.conn_param_update_request.conn_params);
 
-            if (err_code != NRF_SUCCESS)
+            if (err_code != NRF_SUCCESS) {
+#if DEBUG == 1
                 printf("Cannot update connection parameters\n");
+#endif
+            }
 
             break;
     
@@ -677,11 +954,13 @@ static uint8_t db_discovery_init(void)
 
 /** @brief Function for the Power manager.
  */
-static void power_manage(void)
+static uint8_t power_manage(void)
 {
     uint32_t err_code = sd_app_evt_wait();
 
     if (err_code != NRF_SUCCESS)
-        printf("Cannot go to sleep\n");
+        return 1;
+
+    return 0;
 } 
 
