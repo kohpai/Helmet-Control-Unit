@@ -10,7 +10,7 @@
 
 /** @TODO: add error handler */
 void ble_hsus_c_on_db_disc_evt(
-        ble_hsus_c_t            *p_ble_hsus_c, 
+        ble_hsus_c_t            *p_ble_hsus_c,
         ble_db_discovery_evt_t  *p_evt)
 {
     uint8_t count;
@@ -28,32 +28,32 @@ void ble_hsus_c_on_db_disc_evt(
             break;
 
         case BLE_DB_DISCOVERY_COMPLETE:
-            if (p_evt->params.discovered_db.srv_uuid.uuid == 
-                    BLE_UUID_HSU_SERVICE_UUID && 
-                    p_evt->params.discovered_db.srv_uuid.type == 
+            if (p_evt->params.discovered_db.srv_uuid.uuid ==
+                    BLE_UUID_HSU_SERVICE_UUID &&
+                    p_evt->params.discovered_db.srv_uuid.type ==
                     p_ble_hsus_c->uuid_type) {
 
-                for (count = 0; 
-                        count < p_evt->params.discovered_db.char_count; 
+                for (count = 0;
+                        count < p_evt->params.discovered_db.char_count;
                         ++count) {
                     switch (p_chars[count].characteristic.uuid.uuid) {
                         case BLE_UUID_ACC_CHARACTERISTIC_UUID:
-                            hsus_c_evt.handles.acc_handle = 
+                            hsus_c_evt.handles.acc_handle =
                                 p_chars[count].characteristic.handle_value;
                             break;
 
                         case BLE_UUID_GYRO_CHARACTERISTIC_UUID:
-                            hsus_c_evt.handles.gyro_handle = 
+                            hsus_c_evt.handles.gyro_handle =
                                 p_chars[count].characteristic.handle_value;
                             break;
 
                         case BLE_UUID_MAG_CHARACTERISTIC_UUID:
-                            hsus_c_evt.handles.mag_handle = 
+                            hsus_c_evt.handles.mag_handle =
                                 p_chars[count].characteristic.handle_value;
                             break;
 
                         case BLE_UUID_HRM_CHARACTERISTIC_UUID:
-                            hsus_c_evt.handles.hrm_handle = 
+                            hsus_c_evt.handles.hrm_handle =
                                 p_chars[count].characteristic.handle_value;
                             break;
 
@@ -77,34 +77,34 @@ void ble_hsus_c_on_db_disc_evt(
 }
 
 uint32_t ble_hsus_c_init(
-        ble_hsus_c_t        *p_ble_hsus_c, 
+        ble_hsus_c_t        *p_ble_hsus_c,
         ble_hsus_c_init_t   *p_ble_hsus_c_init)
 {
     uint32_t      err_code;
     ble_uuid_t    hsus_uuid;
     ble_uuid128_t hsu_base_uuid = BLE_UUID_HSU_BASE_UUID;
-        
+
     VERIFY_PARAM_NOT_NULL(p_ble_hsus_c);
     VERIFY_PARAM_NOT_NULL(p_ble_hsus_c_init);
-    
+
     err_code = sd_ble_uuid_vs_add(&hsu_base_uuid, &p_ble_hsus_c->uuid_type);
     VERIFY_SUCCESS(err_code);
-    
+
     hsus_uuid.type = p_ble_hsus_c->uuid_type;
     hsus_uuid.uuid = BLE_UUID_HSU_SERVICE_UUID;
-    
+
     p_ble_hsus_c->conn_handle           = BLE_CONN_HANDLE_INVALID;
     p_ble_hsus_c->evt_handler           = p_ble_hsus_c_init->evt_handler;
     p_ble_hsus_c->handles.acc_handle    = BLE_GATT_HANDLE_INVALID;
     p_ble_hsus_c->handles.gyro_handle   = BLE_GATT_HANDLE_INVALID;
     p_ble_hsus_c->handles.mag_handle    = BLE_GATT_HANDLE_INVALID;
     p_ble_hsus_c->handles.hrm_handle    = BLE_GATT_HANDLE_INVALID;
-    
+
     return ble_db_discovery_evt_register(&hsus_uuid);
 }
 
 void ble_hsus_c_on_ble_evt(
-        ble_hsus_c_t    *p_ble_hsus_c, 
+        ble_hsus_c_t    *p_ble_hsus_c,
         const ble_evt_t *p_ble_evt)
 {
     if ((p_ble_hsus_c == NULL) || (p_ble_evt == NULL))
@@ -120,11 +120,11 @@ void ble_hsus_c_on_ble_evt(
                     && p_ble_hsus_c->evt_handler != NULL) {
                 ble_hsus_c_evt_t hsus_c_evt;
 
-                hsus_c_evt.data_len = 
+                hsus_c_evt.data_len =
                     p_ble_evt->evt.gattc_evt.params.read_rsp.len;
-                hsus_c_evt.p_data = 
+                hsus_c_evt.p_data =
                     (uint8_t *)p_ble_evt->evt.gattc_evt.params.read_rsp.data;
-                hsus_c_evt.handles.acc_handle = 
+                hsus_c_evt.handles.acc_handle =
                     p_ble_evt->evt.gattc_evt.params.read_rsp.handle;
                 hsus_c_evt.evt_type = BLE_HSUS_C_EVT_READ_RSP;
 
@@ -136,9 +136,9 @@ void ble_hsus_c_on_ble_evt(
             if (p_ble_evt->evt.gap_evt.conn_handle == p_ble_hsus_c->conn_handle
                     && p_ble_hsus_c->evt_handler != NULL) {
                 ble_hsus_c_evt_t hsus_c_evt;
-                
+
                 hsus_c_evt.evt_type = BLE_HSUS_C_EVT_DISCONNECTED;
-                
+
                 p_ble_hsus_c->conn_handle = BLE_CONN_HANDLE_INVALID;
                 p_ble_hsus_c->evt_handler(p_ble_hsus_c, &hsus_c_evt);
             }
@@ -166,8 +166,8 @@ uint32_t ble_hsus_c_handles_assign(ble_hsus_c_t * p_ble_hsus,
     if (p_peer_handles != NULL) {
         p_ble_hsus->handles.acc_handle  = p_peer_handles->acc_handle;
         p_ble_hsus->handles.gyro_handle = p_peer_handles->gyro_handle;
-        p_ble_hsus->handles.mag_handle  = p_peer_handles->mag_handle;    
-        p_ble_hsus->handles.hrm_handle  = p_peer_handles->hrm_handle;    
+        p_ble_hsus->handles.mag_handle  = p_peer_handles->mag_handle;
+        p_ble_hsus->handles.hrm_handle  = p_peer_handles->hrm_handle;
     }
 
     return NRF_SUCCESS;

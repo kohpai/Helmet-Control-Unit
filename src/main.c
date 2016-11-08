@@ -83,9 +83,9 @@ static          enum internal_state_e   internal_state      = DISCONNECTED;
 static volatile bool                    timer_read_tick     = false;
 static          uint16_t                sensor_values[10]   = {0};
 static          enum unit_status_e      unit_status[2]      = {0};
-static          uint8_t                 overview            = (1 << ACC_STATUS) 
-    | (1 << GYRO_STATUS) 
-    | (1 << MAG_STATUS) 
+static          uint8_t                 overview            = (1 << ACC_STATUS)
+    | (1 << GYRO_STATUS)
+    | (1 << MAG_STATUS)
     | (1 << HRM_STATUS) | 0;
 
 APP_TIMER_DEF(ble_read_timer_id);
@@ -104,7 +104,7 @@ static const ble_gap_conn_params_t m_connection_param =
 /**
  * @brief Parameters used when scanning.
  */
-static const ble_gap_scan_params_t m_scan_params = 
+static const ble_gap_scan_params_t m_scan_params =
 {
   .active      = SCAN_ACTIVE,
   .selective   = SCAN_SELECTIVE,
@@ -234,7 +234,7 @@ int main(void)
 
                     break;
             }
-        } 
+        }
 
         if (app_uart_get(&ch) == NRF_SUCCESS) {
             switch (ch) {
@@ -261,9 +261,9 @@ int main(void)
                     break;
                 case 'A':
 #if DEBUG == 1
-                    printf( "%04x%04x%04x\n", 
-                            sensor_values[0], 
-                            sensor_values[1], 
+                    printf( "%04x%04x%04x\n",
+                            sensor_values[0],
+                            sensor_values[1],
                             sensor_values[2]);
 #else
                     sensor_resp(sensor_values, 0);
@@ -271,9 +271,9 @@ int main(void)
                     break;
                 case 'G':
 #if DEBUG == 1
-                    printf( "%04x%04x%04x\n", 
-                            sensor_values[3], 
-                            sensor_values[4], 
+                    printf( "%04x%04x%04x\n",
+                            sensor_values[3],
+                            sensor_values[4],
                             sensor_values[5]);
 #else
                     sensor_resp(sensor_values, 3);
@@ -281,9 +281,9 @@ int main(void)
                     break;
                 case 'M':
 #if DEBUG == 1
-                    printf( "%04x%04x%04x\n", 
-                            sensor_values[6], 
-                            sensor_values[7], 
+                    printf( "%04x%04x%04x\n",
+                            sensor_values[6],
+                            sensor_values[7],
                             sensor_values[8]);
 #else
                     sensor_resp(sensor_values, 6);
@@ -293,9 +293,9 @@ int main(void)
 #if DEBUG == 1
                     printf( "%04x\n", sensor_values[9]);
 #else
-                    while(app_uart_put((uint8_t)(sensor_values[9] >> 8)) != 
+                    while(app_uart_put((uint8_t)(sensor_values[9] >> 8)) !=
                             NRF_SUCCESS);
-                    while(app_uart_put((uint8_t)(sensor_values[9])) != 
+                    while(app_uart_put((uint8_t)(sensor_values[9])) !=
                             NRF_SUCCESS);
 #endif
                     break;
@@ -322,7 +322,7 @@ EXIT_PROGRAM:
 #if DEBUG == 1
     printf("someone call exit\n");
 #endif
-    
+
     if (unit_status[HCU_STATUS] == UART_ERROR)
         while (true);
 
@@ -371,7 +371,7 @@ static void sensor_resp(uint16_t *sv, uint8_t start)
 
     cr = (uint8_t)(sv[start + 1]);
     while(app_uart_put(cr) != NRF_SUCCESS);
-    
+
     cr = (uint8_t)(sv[start + 2] >> 8);
     while(app_uart_put(cr) != NRF_SUCCESS);
 
@@ -406,8 +406,8 @@ static uint8_t app_timers_init(void)
         return 1;
 
     err_code = app_timer_start(
-            ble_read_timer_id, 
-            APP_TIMER_TICKS(1000, APP_TIMER_PRESCALER), 
+            ble_read_timer_id,
+            APP_TIMER_TICKS(1000, APP_TIMER_PRESCALER),
             NULL);
 
     return 0;
@@ -434,7 +434,7 @@ void assert_nrf_callback(uint16_t line_num, const uint8_t * p_file_name)
 static uint8_t scan_start(void)
 {
     uint32_t err_code;
-    
+
     err_code = sd_ble_gap_scan_start(&m_scan_params);
 
     if (err_code != NRF_SUCCESS) {
@@ -445,7 +445,7 @@ static uint8_t scan_start(void)
     }
 
     return 0;
-} 
+}
 
 /**@brief Function for handling database discovery events.
  *
@@ -486,9 +486,9 @@ void uart_callback(app_uart_evt_t * p_event)
  * @param[in]   p_ble_nus_evt Pointer to the NUS Client event.
  */
 
-/**@snippet [Handling events from the ble_nus_c module] */ 
+/**@snippet [Handling events from the ble_nus_c module] */
 static void ble_hsus_c_evt_handler(
-        ble_hsus_c_t            *p_ble_hsus_c, 
+        ble_hsus_c_t            *p_ble_hsus_c,
         const ble_hsus_c_evt_t  *p_ble_hsus_evt)
 {
     uint32_t    err_code;
@@ -496,8 +496,8 @@ static void ble_hsus_c_evt_handler(
     switch (p_ble_hsus_evt->evt_type) {
         case BLE_HSUS_C_EVT_DISCOVERY_COMPLETE: {
             err_code = ble_hsus_c_handles_assign(
-                    p_ble_hsus_c, 
-                    p_ble_hsus_evt->conn_handle, 
+                    p_ble_hsus_c,
+                    p_ble_hsus_evt->conn_handle,
                     &p_ble_hsus_evt->handles);
 
             if (err_code != NRF_SUCCESS) {
@@ -515,7 +515,7 @@ static void ble_hsus_c_evt_handler(
 
             err_code = sd_ble_gattc_read(
                     p_ble_hsus_c->conn_handle,
-                    p_ble_hsus_c->handles.acc_handle, 
+                    p_ble_hsus_c->handles.acc_handle,
                     0);
 
             if (err_code != NRF_SUCCESS) {
@@ -525,7 +525,7 @@ static void ble_hsus_c_evt_handler(
                 overview &= (~(1 << HCU_STATUS));
                 unit_status[HCU_STATUS] = SYSTEM_ERROR;
 
-                err_code = sd_ble_gap_disconnect(p_ble_hsus_c->conn_handle, 
+                err_code = sd_ble_gap_disconnect(p_ble_hsus_c->conn_handle,
                         BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
 
                 if (err_code != NRF_SUCCESS) {
@@ -552,10 +552,10 @@ static void ble_hsus_c_evt_handler(
                 printf("Read ACC\n");
 #endif
                 err_code = sd_ble_gattc_read(
-                        p_ble_hsus_c->conn_handle, 
-                        p_ble_hsus_c->handles.gyro_handle, 
+                        p_ble_hsus_c->conn_handle,
+                        p_ble_hsus_c->handles.gyro_handle,
                         0);
-    
+
                 if (err_code != NRF_SUCCESS) {
 #if DEBUG == 1
                     printf("Cannot read GYRO value, Error: %lu\n", err_code);
@@ -578,8 +578,8 @@ static void ble_hsus_c_evt_handler(
                 printf("Read GYRO\n");
 #endif
                 err_code = sd_ble_gattc_read(
-                        p_ble_hsus_c->conn_handle, 
-                        p_ble_hsus_c->handles.mag_handle, 
+                        p_ble_hsus_c->conn_handle,
+                        p_ble_hsus_c->handles.mag_handle,
                         0);
 
                 if (err_code != NRF_SUCCESS) {
@@ -604,10 +604,10 @@ static void ble_hsus_c_evt_handler(
                 printf("Read MAG\n");
 #endif
                 err_code = sd_ble_gattc_read(
-                        p_ble_hsus_c->conn_handle, 
-                        p_ble_hsus_c->handles.hrm_handle, 
+                        p_ble_hsus_c->conn_handle,
+                        p_ble_hsus_c->handles.hrm_handle,
                         0);
-    
+
                 if (err_code != NRF_SUCCESS) {
 #if DEBUG == 1
                     printf("Cannot read HRM value\n");
@@ -637,24 +637,24 @@ static void ble_hsus_c_evt_handler(
 #if DEBUG == 1
             printf("\tData: ");
 
-            for (   uint8_t count = 0; 
-                    count < p_ble_hsus_evt->data_len; 
+            for (   uint8_t count = 0;
+                    count < p_ble_hsus_evt->data_len;
                     count += 2) {
-                printf( "%04x", 
-                        ((((uint16_t)p_ble_hsus_evt->p_data[count]) << 8) | 
-                         p_ble_hsus_evt->p_data[count + 1])); 
-                sensor_values[start + (count/2)] = 
-                    ((((uint16_t)p_ble_hsus_evt->p_data[count]) << 8) | 
+                printf( "%04x",
+                        ((((uint16_t)p_ble_hsus_evt->p_data[count]) << 8) |
+                         p_ble_hsus_evt->p_data[count + 1]));
+                sensor_values[start + (count/2)] =
+                    ((((uint16_t)p_ble_hsus_evt->p_data[count]) << 8) |
                      p_ble_hsus_evt->p_data[count + 1]);
             }
 
             printf("\n");
 #else
-            for (   uint8_t count = 0; 
-                    count < p_ble_hsus_evt->data_len; 
+            for (   uint8_t count = 0;
+                    count < p_ble_hsus_evt->data_len;
                     count += 2) {
-                sensor_values[start + (count/2)] = 
-                    ((((uint16_t)p_ble_hsus_evt->p_data[count]) << 8) | 
+                sensor_values[start + (count/2)] =
+                    ((((uint16_t)p_ble_hsus_evt->p_data[count]) << 8) |
                      p_ble_hsus_evt->p_data[count + 1]);
             }
 #endif
@@ -662,9 +662,9 @@ static void ble_hsus_c_evt_handler(
             if (!isDone)
                 break;
 DISCONNECT:
-            err_code = sd_ble_gap_disconnect(p_ble_hsus_c->conn_handle, 
+            err_code = sd_ble_gap_disconnect(p_ble_hsus_c->conn_handle,
                     BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
-    
+
             if (err_code != NRF_SUCCESS) {
 #if DEBUG == 1
                 printf("Cannot start disconnecting\n");
@@ -679,7 +679,7 @@ DISCONNECT:
 
             break;
         }
-        
+
         case BLE_HSUS_C_EVT_DISCONNECTED:
 #if DEBUG == 1
             printf("Disconnected\r\n");
@@ -698,12 +698,12 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
 {
     uint32_t              err_code;
     const ble_gap_evt_t * p_gap_evt = &p_ble_evt->evt.gap_evt;
-    const ble_gap_evt_adv_report_t *p_adv_report = 
+    const ble_gap_evt_adv_report_t *p_adv_report =
         &p_gap_evt->params.adv_report;
 
     switch (p_ble_evt->header.evt_id) {
         case BLE_GAP_EVT_ADV_REPORT: {
-            uint16_t team = 
+            uint16_t team =
                 (((uint16_t)p_gap_evt->params.adv_report.data[6]) << 8);
 
             team |= p_gap_evt->params.adv_report.data[5];
@@ -729,8 +729,8 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
 #endif
                 internal_state = FOUND;
                 err_code = sd_ble_gap_connect(
-                        &p_adv_report->peer_addr, 
-                        &m_scan_params, 
+                        &p_adv_report->peer_addr,
+                        &m_scan_params,
                         &m_connection_param);
 
                 if (err_code != NRF_SUCCESS) {
@@ -743,12 +743,12 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
                 else {
 #if DEBUG == 1
                     printf("Connecting => "
-                            "%02x:%02x:%02x:%02x:%02x:%02x\r\n", 
+                            "%02x:%02x:%02x:%02x:%02x:%02x\r\n",
                             p_adv_report->peer_addr.addr[0],
                             p_adv_report->peer_addr.addr[1],
                             p_adv_report->peer_addr.addr[2],
                             p_adv_report->peer_addr.addr[3],
-                            p_adv_report->peer_addr.addr[4], 
+                            p_adv_report->peer_addr.addr[4],
                             p_adv_report->peer_addr.addr[5]);
 #endif
                     overview |= (1 << HCU_STATUS);
@@ -762,16 +762,16 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
         case BLE_GAP_EVT_CONNECTED:
 #if DEBUG == 1
             printf("Connected => "
-                    "%02x:%02x:%02x:%02x:%02x:%02x\r\n", 
+                    "%02x:%02x:%02x:%02x:%02x:%02x\r\n",
                     p_adv_report->peer_addr.addr[0],
                     p_adv_report->peer_addr.addr[1],
                     p_adv_report->peer_addr.addr[2],
                     p_adv_report->peer_addr.addr[3],
-                    p_adv_report->peer_addr.addr[4], 
+                    p_adv_report->peer_addr.addr[4],
                     p_adv_report->peer_addr.addr[5]);
 #endif
             internal_state = CONNECTED;
-            err_code = ble_db_discovery_start(&m_ble_db_discovery, 
+            err_code = ble_db_discovery_start(&m_ble_db_discovery,
                     p_ble_evt->evt.gap_evt.conn_handle);
 
             if (err_code != NRF_SUCCESS) {
@@ -799,7 +799,7 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
                 overview &= (~(1 << HSU_STATUS));
                 unit_status[HSU_STATUS] = SCAN_TIMEOUT_ERROR;
             }
-            else if (p_gap_evt->params.timeout.src == 
+            else if (p_gap_evt->params.timeout.src ==
                     BLE_GAP_TIMEOUT_SRC_CONN) {
 #if DEBUG == 1
                 printf("Connection Request timed out.\r\n");
@@ -811,8 +811,8 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
 
         case BLE_GAP_EVT_SEC_PARAMS_REQUEST:
             // Pairing not supported
-            err_code = 
-                sd_ble_gap_sec_params_reply(p_ble_evt->evt.gap_evt.conn_handle, 
+            err_code =
+                sd_ble_gap_sec_params_reply(p_ble_evt->evt.gap_evt.conn_handle,
                         BLE_GAP_SEC_STATUS_PAIRING_NOT_SUPP, NULL, NULL);
 
             if (err_code != NRF_SUCCESS) {
@@ -825,7 +825,7 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
 
         case BLE_GAP_EVT_CONN_PARAM_UPDATE_REQUEST:
             // Accepting parameters requested by peer.
-            err_code = sd_ble_gap_conn_param_update(p_gap_evt->conn_handle, 
+            err_code = sd_ble_gap_conn_param_update(p_gap_evt->conn_handle,
                     &p_gap_evt->params.conn_param_update_request.conn_params);
 
             if (err_code != NRF_SUCCESS) {
@@ -835,7 +835,7 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
             }
 
             break;
-    
+
         default:
             break;
     }
@@ -862,22 +862,22 @@ static void ble_evt_dispatch(ble_evt_t * p_ble_evt)
 static uint8_t ble_stack_init(void)
 {
     uint32_t err_code;
-    
+
     nrf_clock_lf_cfg_t clock_lf_cfg = NRF_CLOCK_LFCLKSRC;
-    
+
     // Initialize the SoftDevice handler module.
     SOFTDEVICE_HANDLER_INIT(&clock_lf_cfg, NULL);
-    
+
     ble_enable_params_t ble_enable_params;
     err_code = softdevice_enable_get_default_config(CENTRAL_LINK_COUNT,
                                                     PERIPHERAL_LINK_COUNT,
                                                     &ble_enable_params);
     if (err_code != NRF_SUCCESS)
         return 1;
-    
+
     //Check the ram settings against the used number of links
     CHECK_RAM_START_ADDR(CENTRAL_LINK_COUNT,PERIPHERAL_LINK_COUNT);
-    
+
     // Enable BLE stack.
     err_code = softdevice_enable(&ble_enable_params);
 
@@ -930,9 +930,9 @@ static uint8_t hsus_c_init(void)
 {
     uint32_t            err_code;
     ble_hsus_c_init_t   hsus_c_init_t;
-    
+
     hsus_c_init_t.evt_handler = ble_hsus_c_evt_handler;
-    
+
     err_code = ble_hsus_c_init(&m_ble_hsus_c, &hsus_c_init_t);
 
     if (err_code != NRF_SUCCESS)
@@ -962,5 +962,5 @@ static uint8_t power_manage(void)
         return 1;
 
     return 0;
-} 
+}
 
