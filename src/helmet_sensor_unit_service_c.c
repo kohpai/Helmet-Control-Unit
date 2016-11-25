@@ -37,6 +37,11 @@ void ble_hsus_c_on_db_disc_evt(
                         count < p_evt->params.discovered_db.char_count;
                         ++count) {
                     switch (p_chars[count].characteristic.uuid.uuid) {
+                        case BLE_UUID_ERR_CHARACTERISTIC_UUID:
+                            hsus_c_evt.handles.err_handle =
+                                p_chars[count].characteristic.handle_value;
+                            break;
+
                         case BLE_UUID_ACC_CHARACTERISTIC_UUID:
                             hsus_c_evt.handles.acc_handle =
                                 p_chars[count].characteristic.handle_value;
@@ -95,6 +100,7 @@ uint32_t ble_hsus_c_init(
 
     p_ble_hsus_c->conn_handle           = BLE_CONN_HANDLE_INVALID;
     p_ble_hsus_c->evt_handler           = p_ble_hsus_c_init->evt_handler;
+    p_ble_hsus_c->handles.err_handle    = BLE_GATT_HANDLE_INVALID;
     p_ble_hsus_c->handles.acc_handle    = BLE_GATT_HANDLE_INVALID;
     p_ble_hsus_c->handles.gyro_handle   = BLE_GATT_HANDLE_INVALID;
     p_ble_hsus_c->handles.mag_handle    = BLE_GATT_HANDLE_INVALID;
@@ -164,6 +170,7 @@ uint32_t ble_hsus_c_handles_assign(ble_hsus_c_t * p_ble_hsus,
     p_ble_hsus->conn_handle = conn_handle;
 
     if (p_peer_handles != NULL) {
+        p_ble_hsus->handles.err_handle  = p_peer_handles->err_handle;
         p_ble_hsus->handles.acc_handle  = p_peer_handles->acc_handle;
         p_ble_hsus->handles.gyro_handle = p_peer_handles->gyro_handle;
         p_ble_hsus->handles.mag_handle  = p_peer_handles->mag_handle;
