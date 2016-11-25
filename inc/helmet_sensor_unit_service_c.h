@@ -39,10 +39,11 @@
                                                0x96, 0xA3, 0xC1, 0xEA }}
 
 #define BLE_UUID_HSU_SERVICE_UUID           0x0001
-#define BLE_UUID_ACC_CHARACTERISTIC_UUID    0x0101
-#define BLE_UUID_GYRO_CHARACTERISTIC_UUID   0x0102
-#define BLE_UUID_MAG_CHARACTERISTIC_UUID    0x0103
-#define BLE_UUID_HRM_CHARACTERISTIC_UUID    0x0104
+#define BLE_UUID_ERR_CHARACTERISTIC_UUID    0x0101
+#define BLE_UUID_ACC_CHARACTERISTIC_UUID    0x0102
+#define BLE_UUID_GYRO_CHARACTERISTIC_UUID   0x0103
+#define BLE_UUID_MAG_CHARACTERISTIC_UUID    0x0104
+#define BLE_UUID_HRM_CHARACTERISTIC_UUID    0x0105
 
 #define BLE_HSUS_MAX_DATA_LEN           (GATT_MTU_SIZE_DEFAULT - 3) /**< Maximum length of data (in bytes) that can be transmitted to the peer by the Nordic UART service module. */
 
@@ -59,6 +60,7 @@ typedef enum
 /**@brief Handles on the connected peer device needed to interact with it. 
 */
 typedef struct {
+    uint16_t                err_handle;
     uint16_t                acc_handle;
     uint16_t                gyro_handle;
     uint16_t                mag_handle;
