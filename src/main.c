@@ -229,7 +229,7 @@ static uint8_t init_timer(void)
 
     err_code = app_timer_start(
             ble_read_timer_id,
-            APP_TIMER_TICKS(1000, APP_TIMER_PRESCALER),
+            APP_TIMER_TICKS(100, APP_TIMER_PRESCALER),
             NULL);
 
     if (err_code != NRF_SUCCESS)

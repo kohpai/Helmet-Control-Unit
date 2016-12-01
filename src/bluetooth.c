@@ -34,24 +34,19 @@
 #define MAG_STATUS          4
 #define HRM_STATUS          5
 
-enum unit_status_e {
-    SYSTEM_CLEAR = 0,
-    SYSTEM_ERROR,
-    UART_ERROR,
-    TIMER_ERROR,
-    DB_DISC_ERROR,
-    BLE_STACK_ERROR,
-    HSUS_ERROR,
-    SCAN_ERROR,
-    SCAN_TIMEOUT_ERROR,
-    CONN_REQ_TIMEOUT_ERROR
-};
-
 enum internal_state_e {
     FOUND,
     CONNECTED,
     DISCOVERED,
     DISCONNECTED
+};
+
+enum reading_state_e {
+    READING_ERR,
+    READING_ACC,
+    READING_GYR,
+    READING_MAG,
+    READING_HRM
 };
 
 static const ble_gap_conn_params_t m_connection_param = {
@@ -71,9 +66,13 @@ static const ble_gap_scan_params_t m_scan_params = {
 };
 
 static enum internal_state_e    ble_state           = DISCONNECTED;
+static enum reading_state_e     rd_state            = READING_ERR;
 static ble_db_discovery_t       m_ble_db_discovery;
 static ble_hsus_c_t             m_ble_hsus_c;
+static ble_gap_addr_t           m_hsu_addr;
 static uint8_t                  num_of_conn         = 0;
+static uint8_t                  pending             = 0;
+static uint16_t                 evt_conn_handle     = 0;
 static uint16_t                 err_evt             = 0;
 static int16_t                  acc_val[3]          = {0};
 static int16_t                  gyr_val[3]          = {0};
@@ -96,7 +95,7 @@ static uint8_t db_discovery_init(void)
 
 static void on_ble_evt(ble_evt_t * p_ble_evt)
 {
-    uint32_t              err_code;
+    uint32_t err_code;
     const ble_gap_evt_t * p_gap_evt = &p_ble_evt->evt.gap_evt;
     const ble_gap_evt_adv_report_t *p_adv_report =
         &p_gap_evt->params.adv_report;
@@ -130,63 +129,17 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
 #if DEBUG == 1
                 printf("Confirmed ID code\n");
 #endif
+                m_hsu_addr = p_adv_report->peer_addr;
+                pending = 0;
                 ble_state = FOUND;
-                err_code = sd_ble_gap_connect(
-                        &p_adv_report->peer_addr,
-                        &m_scan_params,
-                        &m_connection_param);
-
-                if (err_code != NRF_SUCCESS) {
-#if DEBUG == 1
-                    printf("Attempt to connect failed\n");
-#endif
-                    set_sys_error(1);
-                }
-                else {
-#if DEBUG == 1
-                    printf("Connecting => "
-                            "%02x:%02x:%02x:%02x:%02x:%02x\r\n",
-                            p_adv_report->peer_addr.addr[0],
-                            p_adv_report->peer_addr.addr[1],
-                            p_adv_report->peer_addr.addr[2],
-                            p_adv_report->peer_addr.addr[3],
-                            p_adv_report->peer_addr.addr[4],
-                            p_adv_report->peer_addr.addr[5]);
-#endif
-                    set_sys_error(0);
-                }
             }
 
             break;
         }
         case BLE_GAP_EVT_CONNECTED:
-#if DEBUG == 1
-            printf("Connected => "
-                    "%02x:%02x:%02x:%02x:%02x:%02x\r\n",
-                    p_adv_report->peer_addr.addr[0],
-                    p_adv_report->peer_addr.addr[1],
-                    p_adv_report->peer_addr.addr[2],
-                    p_adv_report->peer_addr.addr[3],
-                    p_adv_report->peer_addr.addr[4],
-                    p_adv_report->peer_addr.addr[5]);
-#endif
+            evt_conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
+            pending = 0;
             ble_state = CONNECTED;
-            err_code = ble_db_discovery_start(&m_ble_db_discovery,
-                    p_ble_evt->evt.gap_evt.conn_handle);
-
-            if (err_code != NRF_SUCCESS) {
-#if DEBUG == 1
-                printf("Cannot start discovery services\n");
-#endif
-                set_sys_error(1);
-            }
-            else {
-#if DEBUG == 1
-                printf("Start discovery ...\n");
-#endif
-                set_sys_error(0);
-            }
-
             break;
 
         case BLE_GAP_EVT_TIMEOUT:
@@ -201,6 +154,9 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
                 printf("Connection Request timed out.\r\n");
 #endif
             }
+
+            pending = 0;
+
             break;
 
         case BLE_GAP_EVT_SEC_PARAMS_REQUEST:
@@ -297,14 +253,12 @@ static void ble_hsus_c_evt_handler(
         const ble_hsus_c_evt_t  *p_ble_hsus_evt)
 {
     uint32_t err_code;
-    bool isDone = false;
 
     switch (p_ble_hsus_evt->evt_type) {
         case BLE_HSUS_C_EVT_DISCOVERY_COMPLETE: {
 #if DEBUG == 1
             printf("Discovery done\n");
 #endif
-            ble_state   = DISCOVERED;
             err_code    = ble_hsus_c_handles_assign(
                     p_ble_hsus_c,
                     p_ble_hsus_evt->conn_handle,
@@ -316,66 +270,26 @@ static void ble_hsus_c_evt_handler(
 #endif
                 set_sys_error(1);
                 break;
-            }
-
-            err_code = sd_ble_gattc_read(
-                    p_ble_hsus_c->conn_handle,
-                    p_ble_hsus_c->handles.err_handle,
-                    0);
-
-            if (err_code != NRF_SUCCESS) {
-#if DEBUG == 1
-                printf("Cannot read ERR_EVT value\n");
-#endif
-                set_sys_error(1);
+            } else {
+                pending = 0;
+                ble_state   = DISCOVERED;
             }
 
             break;
         }
         case BLE_HSUS_C_EVT_READ_RSP: {
-            uint16_t    char_handle     = p_ble_hsus_evt->handles.acc_handle;
+            uint16_t char_handle = p_ble_hsus_evt->handles.acc_handle;
 
             if (char_handle == p_ble_hsus_c->handles.err_handle) {
                 arr_to_err(
                         p_ble_hsus_evt->p_data,
                         &err_evt,
                         p_ble_hsus_evt->data_len);
-
-                switch ((err_evt & 0x0700) >> 8) {
-                    case 0:
-                        printf("Anamoly fine\n");
-                        break;
-                    case 1:
-                        printf("Over Angle\n");
-                        break;
-                    case 2:
-                        printf("Over Acceleration\n");
-                        break;
-                    case 3:
-                        printf("Over Angular Velocity\n");
-                        break;
-                    default:
-                        break;
-                }
 #if DEBUG == 1
                 printf("Read ERR\n");
 #endif
-                err_code = sd_ble_gattc_read(
-                        p_ble_hsus_c->conn_handle,
-                        p_ble_hsus_c->handles.acc_handle,
-                        0);
-
-                if (err_code != NRF_SUCCESS) {
-#if DEBUG == 1
-                    printf("Cannot read ACC value, Error: %lu\n", err_code);
-#endif
-                    set_sys_error(1);
-                    isDone = true;
-
-                    break;
-                }
-            }
-            else if (char_handle == p_ble_hsus_c->handles.acc_handle) {
+                pending = 0;
+            } else if (char_handle == p_ble_hsus_c->handles.acc_handle) {
                 arr_to_xyz(
                         p_ble_hsus_evt->p_data,
                         acc_val,
@@ -383,22 +297,8 @@ static void ble_hsus_c_evt_handler(
 #if DEBUG == 1
                 printf("Read ACC\n");
 #endif
-                err_code = sd_ble_gattc_read(
-                        p_ble_hsus_c->conn_handle,
-                        p_ble_hsus_c->handles.gyro_handle,
-                        0);
-
-                if (err_code != NRF_SUCCESS) {
-#if DEBUG == 1
-                    printf("Cannot read GYRO value, Error: %lu\n", err_code);
-#endif
-                    set_sys_error(1);
-                    isDone = true;
-
-                    break;
-                }
-            }
-            else if (char_handle == p_ble_hsus_c->handles.gyro_handle) {
+                pending = 0;
+            } else if (char_handle == p_ble_hsus_c->handles.gyro_handle) {
                 arr_to_xyz(
                         p_ble_hsus_evt->p_data,
                         gyr_val,
@@ -406,22 +306,8 @@ static void ble_hsus_c_evt_handler(
 #if DEBUG == 1
                 printf("Read GYRO\n");
 #endif
-                err_code = sd_ble_gattc_read(
-                        p_ble_hsus_c->conn_handle,
-                        p_ble_hsus_c->handles.mag_handle,
-                        0);
-
-                if (err_code != NRF_SUCCESS) {
-#if DEBUG == 1
-                    printf("Cannot read MAG value\n");
-#endif
-                    set_sys_error(1);
-                    isDone = true;
-
-                    break;
-                }
-            }
-            else if (char_handle == p_ble_hsus_c->handles.mag_handle) {
+                pending = 0;
+            } else if (char_handle == p_ble_hsus_c->handles.mag_handle) {
                 arr_to_xyz(
                         p_ble_hsus_evt->p_data,
                         mag_val,
@@ -429,22 +315,8 @@ static void ble_hsus_c_evt_handler(
 #if DEBUG == 1
                 printf("Read MAG\n");
 #endif
-                err_code = sd_ble_gattc_read(
-                        p_ble_hsus_c->conn_handle,
-                        p_ble_hsus_c->handles.hrm_handle,
-                        0);
-
-                if (err_code != NRF_SUCCESS) {
-#if DEBUG == 1
-                    printf("Cannot read HRM value\n");
-#endif
-                    set_sys_error(1);
-                    isDone = true;
-
-                    break;
-                }
-            }
-            else if (char_handle == p_ble_hsus_c->handles.hrm_handle) {
+                pending = 0;
+            } else if (char_handle == p_ble_hsus_c->handles.hrm_handle) {
                 arr_to_xyz(
                         p_ble_hsus_evt->p_data,
                         &hrm_val,
@@ -453,7 +325,7 @@ static void ble_hsus_c_evt_handler(
                 printf("Read HRM\n");
 #endif
                 set_sys_error(0);
-                isDone = true;
+                pending = 0;
             }
 
             break;
@@ -463,22 +335,23 @@ static void ble_hsus_c_evt_handler(
 #if DEBUG == 1
             printf("Disconnected\r\n");
 #endif
+            pending = 0;
             ble_state = DISCONNECTED;
 
             break;
     }
 
-    if (!isDone)
-        return;
-
-    err_code = sd_ble_gap_disconnect(p_ble_hsus_c->conn_handle,
-            BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
-
-    if (err_code != NRF_SUCCESS) {
-#if DEBUG == 1
-        printf("Cannot start disconnecting\n");
-#endif
-    }
+/**     if (!isDone)
+  *         return;
+  *
+  *     err_code = sd_ble_gap_disconnect(p_ble_hsus_c->conn_handle,
+  *             BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
+  *
+  *     if (err_code != NRF_SUCCESS) {
+  * #if DEBUG == 1
+  *         printf("Cannot start disconnecting\n");
+  * #endif
+  *     } */
 }
 
 static uint8_t hsus_c_init(void)
@@ -530,16 +403,137 @@ static uint8_t scan_start(void)
     return 0;
 }
 
+static uint8_t read_chars(
+        enum reading_state_e *rd,
+        ble_hsus_c_t *hsus_c,
+        uint8_t *pending)
+{
+    uint32_t err_code;
+    uint8_t ret = 0;
+
+    if (*pending)
+        goto RETURN;
+
+    switch (*rd) {
+        case READING_ERR:
+            err_code = sd_ble_gattc_read(
+                    hsus_c->conn_handle,
+                    hsus_c->handles.err_handle,
+                    0);
+
+            if (err_code != NRF_SUCCESS) {
+                set_sys_error(1);
+                ret = 1;
+            } else {
+                *pending = 1;
+                *rd = READING_ACC;
+            }
+
+            break;
+        case READING_ACC:
+            err_code = sd_ble_gattc_read(
+                    hsus_c->conn_handle,
+                    hsus_c->handles.acc_handle,
+                    0);
+
+            if (err_code != NRF_SUCCESS) {
+                set_sys_error(1);
+                ret = 2;
+            } else {
+                *pending = 1;
+                *rd = READING_GYR;
+            }
+
+            break;
+        case READING_GYR:
+            err_code = sd_ble_gattc_read(
+                    hsus_c->conn_handle,
+                    hsus_c->handles.gyro_handle,
+                    0);
+
+            if (err_code != NRF_SUCCESS) {
+                set_sys_error(1);
+                ret = 3;
+            } else {
+                *pending = 1;
+                *rd = READING_MAG;
+            }
+
+            break;
+        case READING_MAG:
+            err_code = sd_ble_gattc_read(
+                    hsus_c->conn_handle,
+                    hsus_c->handles.mag_handle,
+                    0);
+
+            if (err_code != NRF_SUCCESS) {
+                set_sys_error(1);
+                ret = 4;
+            } else {
+                *pending = 1;
+                *rd = READING_HRM;
+            }
+
+            break;
+        case READING_HRM:
+            err_code = sd_ble_gattc_read(
+                    hsus_c->conn_handle,
+                    hsus_c->handles.hrm_handle,
+                    0);
+
+            if (err_code != NRF_SUCCESS) {
+                set_sys_error(1);
+                ret = 5;
+            } else {
+                *pending = 1;
+                *rd = READING_ERR;
+            }
+
+            break;
+    }
+
+RETURN:
+    return ret;
+}
+
 void timer_tick(void)
 {
     uint8_t ret;
+    uint32_t err_code;
 
     switch (ble_state) {
         case FOUND:
 #if DEBUG == 1
             printf("timer_tick: found\n");
 #endif
-            // Do nothing yet.
+            if (pending)
+                break;
+
+            err_code = sd_ble_gap_connect(
+                    &m_hsu_addr,
+                    &m_scan_params,
+                    &m_connection_param);
+
+            if (err_code != NRF_SUCCESS) {
+#if DEBUG == 1
+                printf("Attempt to connect failed\n");
+#endif
+                set_sys_error(1);
+            }
+            else {
+#if DEBUG == 1
+                printf("Connecting => "
+                        "%02x:%02x:%02x:%02x:%02x:%02x\r\n",
+                        m_hsu_addr.addr[0],
+                        m_hsu_addr.addr[1],
+                        m_hsu_addr.addr[2],
+                        m_hsu_addr.addr[3],
+                        m_hsu_addr.addr[4],
+                        m_hsu_addr.addr[5]);
+#endif
+                set_sys_error(0);
+                pending = 1;
+            }
             break;
         case CONNECTED:
 #if DEBUG == 1
@@ -549,7 +543,39 @@ void timer_tick(void)
 
             if (num_of_conn > 3) {
                 num_of_conn = 0;
-                ble_state = DISCONNECTED;
+                pending     = 0;
+                ble_state   = DISCONNECTED;
+
+                break;
+            }
+
+            if (pending)
+                break;
+#if DEBUG == 1
+            printf("Connected => "
+                    "%02x:%02x:%02x:%02x:%02x:%02x\r\n",
+                    m_hsu_addr.addr[0],
+                    m_hsu_addr.addr[1],
+                    m_hsu_addr.addr[2],
+                    m_hsu_addr.addr[3],
+                    m_hsu_addr.addr[4],
+                    m_hsu_addr.addr[5]);
+#endif
+            err_code = ble_db_discovery_start(&m_ble_db_discovery,
+                    evt_conn_handle);
+
+            if (err_code != NRF_SUCCESS) {
+#if DEBUG == 1
+                printf("Cannot start discovery services\n");
+#endif
+                set_sys_error(1);
+            }
+            else {
+#if DEBUG == 1
+                printf("Start discovery ...\n");
+#endif
+                set_sys_error(0);
+                pending = 1;
             }
 
             break;
@@ -557,18 +583,33 @@ void timer_tick(void)
 #if DEBUG == 1
             printf("timer_tick: discovered\n");
 #endif
-            // Read HSU!!!
+            if (pending)
+                break;
+
+            ret = read_chars(&rd_state, &m_ble_hsus_c, &pending);
+
+            if (ret != 0) {
+#if DEBUG == 1
+                printf("cannot read: %u\n", ret);
+#endif
+            }
+
             break;
         case DISCONNECTED:
 #if DEBUG == 1
             printf("timer_tick: disconnected\n");
 #endif
+            if (pending)
+                break;
+
             ret = scan_start();
 
-            if (ret != 0)
+            if (ret != 0) {
                 set_sys_error(1);
-            else
+            } else {
                 set_sys_error(0);
+                pending = 1;
+            }
 
             break;
         default:

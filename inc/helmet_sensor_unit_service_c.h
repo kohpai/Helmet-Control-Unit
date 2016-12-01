@@ -49,15 +49,15 @@
 
 
 /**@brief HSUS Client event type. */
-typedef enum 
+typedef enum
 {
-    BLE_HSUS_C_EVT_DISCOVERY_COMPLETE = 1, 
+    BLE_HSUS_C_EVT_DISCOVERY_COMPLETE = 1,
     BLE_HSUS_C_EVT_DISCONNECTED,
     BLE_HSUS_C_EVT_READ_RSP,
 } ble_hsus_c_evt_type_t;
 
 
-/**@brief Handles on the connected peer device needed to interact with it. 
+/**@brief Handles on the connected peer device needed to interact with it.
 */
 typedef struct {
     uint16_t                err_handle;
@@ -71,7 +71,7 @@ typedef struct {
 /**@brief Structure containing the HSUS event data received from the peer. */
 typedef struct {
     ble_hsus_c_evt_type_t   evt_type;
-    uint16_t                conn_handle; 
+    uint16_t                conn_handle;
     uint8_t                 *p_data;
     uint8_t                 data_len;
     ble_hsus_c_handles_t    handles;     /**< Handles on which the Nordic Uart service characteristics was discovered on the peer device. This will be filled if the evt_type is @ref BLE_HSUS_C_EVT_DISCOVERY_COMPLETE.*/
@@ -117,7 +117,7 @@ typedef struct {
  * @param[in] p_ble_hsus_c_init Pointer to the HSUS initialization structure containing the
  *                             initialization information.
  *
- * @retval    NRF_SUCCESS If the module was initialized successfully. Otherwise, an error 
+ * @retval    NRF_SUCCESS If the module was initialized successfully. Otherwise, an error
  *                        code is returned. This function
  *                        propagates the error code returned by the Database Discovery module API
  *                        @ref ble_db_discovery_evt_register.
@@ -137,8 +137,8 @@ uint32_t ble_hsus_c_init(ble_hsus_c_t * p_ble_hsus_c, ble_hsus_c_init_t * p_ble_
  * @param[in] p_evt       Pointer to the event received from the database discovery module.
  */
  void ble_hsus_c_on_db_disc_evt(ble_hsus_c_t * p_ble_hsus_c, ble_db_discovery_evt_t * p_evt);
- 
- 
+
+
 /**@brief     Function for handling BLE events from the SoftDevice.
  *
  * @details   This function handles the BLE events received from the SoftDevice. If a BLE
@@ -166,7 +166,7 @@ void ble_hsus_c_on_ble_evt(ble_hsus_c_t * p_ble_hsus_c, const ble_evt_t * p_ble_
 /**@brief Function for assigning handles to a this instance of hsus_c.
  *
  * @details Call this function when a link has been established with a peer to
- *          associate this link to this instance of the module. This makes it 
+ *          associate this link to this instance of the module. This makes it
  *          possible to handle several link and associate each link to a particular
  *          instance of this module. The connection handle and attribute handles will be
  *          provided from the discovery event @ref BLE_HSUS_C_EVT_DISCOVERY_COMPLETE.
